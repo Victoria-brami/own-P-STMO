@@ -12,7 +12,16 @@ def deterministic_random(min_value, max_value, data):
 
 def mpjpe_cal(predicted, target):
     assert predicted.shape == target.shape
-    return torch.mean(torch.norm(predicted - target, dim=len(target.shape) - 1))
+    # print("Target shape", target.shape)
+    if torch.is_tensor(target):
+        visible = target.clone() 
+    else:
+        target = torch.from_numpy(target)
+        visible = target.clone() 
+        predicted = torch.from_numpy(predicted)
+    visible[visible != 0] = 1
+    
+    return torch.mean(torch.norm(predicted*visible - target, dim=len(target.shape) - 1))
 
 
 def test_calculation(predicted, target, action, error_sum, data_type, subject, MAE=False):
@@ -28,7 +37,16 @@ def mpjpe_by_action_p1(predicted, target, action, action_error_sum):
     assert predicted.shape == target.shape
     batch_num = predicted.size(0)
     frame_num = predicted.size(1)
-    dist = torch.mean(torch.norm(predicted - target, dim=len(target.shape) - 1), dim=len(target.shape) - 2)
+    
+    if torch.is_tensor(target):
+        visible = target.clone() 
+    else:
+        target = torch.from_numpy(target)
+        visible = target.clone() 
+        predicted = torch.from_numpy(predicted)
+    visible[visible != 0] = 1
+    
+    dist = torch.mean(torch.norm(predicted*visible - target, dim=len(target.shape) - 1), dim=len(target.shape) - 2)
 
     if len(set(list(action))) == 1:
         end_index = action[0].find(' ')
@@ -56,6 +74,13 @@ def mpjpe_by_action_p2(predicted, target, action, action_error_sum):
     num = predicted.size(0)
     pred = predicted.detach().cpu().numpy().reshape(-1, predicted.shape[-2], predicted.shape[-1])
     gt = target.detach().cpu().numpy().reshape(-1, target.shape[-2], target.shape[-1])
+    if torch.is_tensor(gt):
+        visible = gt.clone() 
+    else:
+        import copy
+        visible = copy.deepcopy(gt) 
+    visible[visible != 0] = 1
+    
     dist = p_mpjpe(pred, gt)
     if len(set(list(action))) == 1:
         end_index = action[0].find(' ')

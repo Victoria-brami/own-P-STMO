@@ -40,6 +40,7 @@ class ChunkedGenerator:
             self.batch_cam = np.empty((batch_size, cameras[key].shape[-1]))
 
         if poses_3d is not None:
+            print("Batch SHape: ", (batch_size, chunk_length, poses_3d[key].shape[-2], poses_3d[key].shape[-1]))
             self.batch_3d = np.empty((batch_size, chunk_length, poses_3d[key].shape[-2], poses_3d[key].shape[-1]))
         self.batch_2d = np.empty((batch_size, chunk_length + 2 * pad, poses_2d[key].shape[-2], poses_2d[key].shape[-1]))
 

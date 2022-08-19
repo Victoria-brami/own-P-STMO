@@ -8,7 +8,7 @@ from tqdm import tqdm
 import torch.nn as nn
 import torch.utils.data
 import torch.optim as optim
-from common.opt import opts
+from common.wholebody_opt import opts
 from common.utils_modified import *
 from common.camera import get_uvd2xyz
 from common.load_data_hm36_tds import Fusion

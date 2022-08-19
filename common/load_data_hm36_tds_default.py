@@ -1,31 +1,9 @@
-
 import torch.utils.data as data
 import numpy as np
 
 from common.utils import deterministic_random
 from common.camera import world_to_camera, normalize_screen_coordinates
 from common.generator_tds import ChunkedGenerator
-
-dad_metadata = {
-    'layout_name': 'dad',
-    'num_joints': 17,
-    'keypoints_symmetry': [
-        [1, 3, 5, 7, 9, 11, 13, 15],
-        [2, 4, 6, 8, 10, 12, 14, 16],
-    ]
-}
-
-
-dad_wholebody_metadata = {
-    'layout_name': 'dad',
-    'num_joints': 133,
-    'keypoints_symmetry': [
-        [1, 3, 5, 7, 9, 11, 13, 15, 17, 18, 19]+list(range(33, 40))+list(range(46, 71))+list(range(91, 112)),
-        [2, 4, 6, 8, 10, 12, 14, 16, 20, 21, 22]+list(range(24, 32))+list(range(40, 65))+list(range(112, 133)),
-    ]
-}
-
-
 
 class Fusion(data.Dataset):
     def __init__(self, opt, dataset, root_path, train=True, MAE=False, tds=1):
@@ -43,8 +21,6 @@ class Fusion(data.Dataset):
         self.crop_uv = opt.crop_uv
         self.test_aug = opt.test_augmentation
         self.pad = opt.pad
-        self.seq_start = opt.seq_start
-        self.seq_length = opt.seq_length
         self.MAE=MAE
         if self.train:
             self.keypoints = self.prepare_data(dataset, self.train_list)
@@ -70,25 +46,22 @@ class Fusion(data.Dataset):
             print('INFO: Testing on {} frames'.format(self.generator.num_frames()))
 
     def prepare_data(self, dataset, folder_list):
-        for subject in dataset.subjects():
+        for subject in folder_list:
             for action in dataset[subject].keys():
                 anim = dataset[subject][action]
-                
-                if 'positions' in anim:
-                    positions_3d = []
-                    for cam in anim['cameras']:
-                        # pos_3d = world_to_camera(anim['positions'], R=cam['orientation'], t=cam['translation'])
-                        # Replace the previous line by:
-                        pos_3d = anim['positions'][0]
-                        pos_3d[:, 1:] -= pos_3d[:, :1] # Remove global offset, but keep trajectory in first position
-                        positions_3d.append(pos_3d)
-                    anim['positions_3d'] = positions_3d
 
-        self.data_type = 'dad'
-        self.keypoints_name = 'gt_train'
+                positions_3d = []
+                for cam in anim['cameras']:
+                    pos_3d = world_to_camera(anim['positions'], R=cam['orientation'], t=cam['translation'])
+                    pos_3d[:, 1:] -= pos_3d[:, :1] 
+                    
+                    if self.keypoints_name.startswith('sh'):
+                        pos_3d = np.delete(pos_3d,obj=9,axis=1)
+                    positions_3d.append(pos_3d)
+                anim['positions_3d'] = positions_3d
+
         keypoints = np.load(self.root_path + 'data_2d_' + self.data_type + '_' + self.keypoints_name + '.npz',allow_pickle=True)
-        keypoints_metadata = dad_metadata
-        keypoints_symmetry = dad_metadata['keypoints_symmetry']
+        keypoints_symmetry = keypoints['metadata'].item()['keypoints_symmetry']
 
         self.kps_left, self.kps_right = list(keypoints_symmetry[0]), list(keypoints_symmetry[1])
         self.joints_left, self.joints_right = list(dataset.skeleton().joints_left()), list(dataset.skeleton().joints_right())
@@ -102,20 +75,19 @@ class Fusion(data.Dataset):
                                                                                                          subject)
                 for cam_idx in range(len(keypoints[subject][action])):
 
-                    mocap_length = dataset[subject][action]['positions_3d'][0].shape[0]
-                    assert keypoints[subject][action].shape[0] >= mocap_length
+                    mocap_length = dataset[subject][action]['positions_3d'][cam_idx].shape[0]
+                    assert keypoints[subject][action][cam_idx].shape[0] >= mocap_length
 
-                    if keypoints[subject][action].shape[0] > mocap_length:
-                        keypoints[subject][action] = keypoints[subject][action][:mocap_length]
+                    if keypoints[subject][action][cam_idx].shape[0] > mocap_length:
+                        keypoints[subject][action][cam_idx] = keypoints[subject][action][cam_idx][:mocap_length]
 
         for subject in keypoints.keys():
-            for i, action in enumerate(keypoints[subject]):
-               # for cam_idx, kps in enumerate(keypoints[subject][action]):
-                kps = keypoints[subject][action].reshape((len(keypoints[subject][action]), dad_metadata['num_joints'], 3))
-                cam = dataset.cameras()[subject][i]
-                if self.crop_uv == 0:
-                    kps[..., :2] = normalize_screen_coordinates(kps[..., :2], w=cam['res_w'], h=cam['res_h'])
-                keypoints[subject][action] = kps[..., :2]
+            for action in keypoints[subject]:
+                for cam_idx, kps in enumerate(keypoints[subject][action]):
+                    cam = dataset.cameras()[subject][cam_idx]
+                    if self.crop_uv == 0:
+                        kps[..., :2] = normalize_screen_coordinates(kps[..., :2], w=cam['res_w'], h=cam['res_h'])
+                    keypoints[subject][action][cam_idx] = kps
         
         return keypoints
 
@@ -135,14 +107,13 @@ class Fusion(data.Dataset):
                     if not found:
                         continue
 
-                poses_2d = np.array([self.keypoints[subject][action]])
+                poses_2d = self.keypoints[subject][action]
 
                 for i in range(len(poses_2d)):
                     out_poses_2d[(subject, action, i)] = poses_2d[i]
 
                 if subject in dataset.cameras():
-                    cams = [dataset.cameras()[subject][0]] # One unique cam
-                    # print("cams and pos 2d", len(cams), cams, len(poses_2d) )
+                    cams = dataset.cameras()[subject]
                     assert len(cams) == len(poses_2d), 'Camera count mismatch'
                     for i, cam in enumerate(cams):
                         if 'intrinsic' in cam:
@@ -152,10 +123,8 @@ class Fusion(data.Dataset):
                     poses_3d = dataset[subject][action]['positions_3d']
                     assert len(poses_3d) == len(poses_2d), 'Camera count mismatch'
                     for i in range(len(poses_3d)): 
-                        pose_3d = poses_3d[i] #[self.seq_start: self.seq_start + self.seq_length]
-                        pose_3d = np.reshape(pose_3d, (len(pose_3d), 17, 3))
-
-                        out_poses_3d[(subject, action, i)] = pose_3d
+                        print("3D Added Pose Shape: ", poses_3d[i].shape) 
+                        out_poses_3d[(subject, action, i)] = poses_3d[i]
 
         if len(out_camera_params) == 0:
             out_camera_params = None
@@ -206,7 +175,5 @@ class Fusion(data.Dataset):
         if self.MAE:
             return cam, input_2D_update, action, subject, scale, bb_box, cam_ind
         else:
+            # print("Index {}: GT 3D {} and input_2D {}".format(index, gt_3D.shape, input_2D_update.shape))
             return cam, gt_3D, input_2D_update, action, subject, scale, bb_box, cam_ind
-
-
-
