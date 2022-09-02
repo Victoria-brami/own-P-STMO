@@ -1,19 +1,22 @@
 import os
+os.system("pip install torch-summary")
+import torchsummary
 import glob
 import torch
 import random
 import logging
 import numpy as np
+import math
 from tqdm import tqdm
 import torch.nn as nn
 import torch.utils.data
 import torch.optim as optim
-from common.wholebody_opt import opts
-from common.utils_modified import *
+from common.opt_wholebody import opts
+from common.utils import *
 from common.camera import get_uvd2xyz
 from common.load_data_hm36_tds import Fusion
 from common.h36m_dataset import Human36mDataset
-from common.dad_dataset import  DadHuman36MDataset
+from common.dad_dataset import  DadHuman36MWholebodyDataset
 from model.block.refine import refine
 from model.stmo import Model
 from model.stmo_pretrain import Model_MAE
@@ -53,8 +56,12 @@ def step(split, opt, actions, dataLoader, model, optimizer=None, epoch=None):
     action_error_sum_MAE = define_error_list(actions)
     
 
-    joints_left = [4, 5, 6, 11, 12, 13]  
-    joints_right = [1, 2, 3, 14, 15, 16]
+    joints_left=[1, 3, 5, 7, 9, 11, 13, 15, 32-6, 33-6, 34-6, 
+                                 35-6, 36-6, 37-6, 38-6, 39-6, 45-6, 46-6, 47-6, 
+                                 48-6, 49-6, 65-6, 66-6, 67-6, 68-6, 69-6, 70-6]
+    joints_right=[2, 4, 6, 8, 10, 12, 14, 16, 23-6, 24-6, 25-6, 
+                                  26-6, 27-6, 28-6, 29-6, 30-6, 40-6, 41-6, 42-6, 
+                                  43-6, 44-6, 59-6, 60-6, 61-6, 62-6, 63-6, 64-6]
 
     for i, data in enumerate(tqdm(dataLoader, 0)):
 
@@ -76,9 +83,9 @@ def step(split, opt, actions, dataLoader, model, optimizer=None, epoch=None):
 
             mask = torch.from_numpy(mask).to(torch.bool).cuda()
 
-            spatial_mask = np.zeros((f, 17), dtype=bool)
+            spatial_mask = np.zeros((f, 85), dtype=bool)
             for k in range(f):
-                ran = random.sample(range(0, 16), opt.spatial_mask_num)
+                ran = random.sample(range(0, 84), opt.spatial_mask_num)
                 spatial_mask[k, ran] = True
 
 
@@ -251,12 +258,14 @@ if __name__ == '__main__':
         logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y/%m/%d %H:%M:%S', \
                             filename=os.path.join(opt.checkpoint, 'train.log'), level=logging.INFO)
     opt.root_path = '/datasets_local/DriveAndAct/' 
-    opt.dataset = 'dad_train'
     root_path = opt.root_path
-    dataset_path = root_path + 'data_3d_' + opt.dataset + '.npz'
+    if opt.train:
+        dataset_path = root_path + 'data_3d_' + opt.dataset + '_train' + '.npz'
+    else:
+        dataset_path = root_path + 'data_3d_' + opt.dataset + '_train' + '.npz'
 
     # dataset = Human36mDataset(dataset_path, opt)
-    dataset =  DadHuman36MDataset(dataset_path)
+    dataset =  DadHuman36MWholebodyDataset(dataset_path)
     for subject in dataset.subjects():
         for action in dataset[subject].keys():
             print("Subject and action: ", subject, action)
@@ -342,7 +351,7 @@ if __name__ == '__main__':
     for i_model in model:
         all_param += list(model[i_model].parameters())
     optimizer_all = optim.Adam(all_param, lr=opt.lr, amsgrad=True)
-
+    mpjpe = math.inf
     for epoch in range(1, opt.nepoch):
         if opt.train == 1:
             if not opt.MAE:

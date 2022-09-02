@@ -19,8 +19,7 @@ def test_calculation(predicted, target, action, error_sum, data_type, subject, M
     error_sum = mpjpe_by_action_p1(predicted, target, action, error_sum)
     if not MAE:
         error_sum = mpjpe_by_action_p2(predicted, target, action, error_sum)
-        # error_sum = mpjpe_by_action_p3(predicted, target, action, error_sum)
-        # error_sum = mpjpe_by_action_ve(predicted, target, action, error_sum)
+
     return error_sum
 
 
@@ -76,57 +75,6 @@ def mpjpe_by_action_p2(predicted, target, action, action_error_sum):
     return action_error_sum
 
 
-def mpjpe_by_action_p3(predicted, target, action, action_error_sum):
-
-    assert predicted.shape == target.shape
-    num = predicted.size(0)
-    pred = predicted.detach().cpu().numpy().reshape(-1, predicted.shape[-2], predicted.shape[-1])
-    gt = target.detach().cpu().numpy().reshape(-1, target.shape[-2], target.shape[-1])
-    dist = n_mpjpe(pred, gt)
-    if len(set(list(action))) == 1:
-        end_index = action[0].find(' ')
-        if end_index != -1:
-            action_name = action[0][:end_index]
-        else:
-            action_name = action[0]
-        action_error_sum[action_name]['p3'].update(np.mean(dist) * num, num)
-    else:
-        for i in range(num):
-            end_index = action[i].find(' ')
-            if end_index != -1:
-                action_name = action[i][:end_index]
-            else:
-                action_name = action[i]
-            action_error_sum[action_name]['p3'].update(np.mean(dist), 1)
-            
-    return action_error_sum
-
-def mpjpe_by_action_ve(predicted, target, action, action_error_sum):
-    assert predicted.shape == target.shape
-    num = predicted.size(0)
-    pred = predicted.detach().cpu().numpy().reshape(-1, predicted.shape[-2], predicted.shape[-1])
-    gt = target.detach().cpu().numpy().reshape(-1, target.shape[-2], target.shape[-1])
-    dist = mean_velocity_error(pred, gt)
-    if len(set(list(action))) == 1:
-        end_index = action[0].find(' ')
-        if end_index != -1:
-            action_name = action[0][:end_index]
-        else:
-            action_name = action[0]
-        action_error_sum[action_name]['ve'].update(np.mean(dist) * (num-1), num-1)
-    else:
-        for i in range(num):
-            end_index = action[i].find(' ')
-            if end_index != -1:
-                action_name = action[i][:end_index]
-            else:
-                action_name = action[i]
-            action_error_sum[action_name]['ve'].update(np.mean(dist), 1)
-            
-    return action_error_sum
-
-
-
 def p_mpjpe(predicted, target):
     assert predicted.shape == target.shape
 
@@ -160,6 +108,7 @@ def p_mpjpe(predicted, target):
     predicted_aligned = a * np.matmul(predicted, R) + t
 
     return np.mean(np.linalg.norm(predicted_aligned - target, axis=len(target.shape) - 1), axis=len(target.shape) - 2)
+
 
 def n_mpjpe(predicted, target):
     """
@@ -205,6 +154,20 @@ def define_actions( action ):
                 "inner_mirror/vp11/run2_2018-05-24-14-35-56.ids_1", "inner_mirror/vp11/run1_2018-05-24-13-44-01.ids_1",
                 "inner_mirror/vp12/run1_2018-05-24-15-44-28.ids_1", "inner_mirror/vp12/run2_2018-05-24-16-21-35.ids_1"
                 ]
+    """
+    actions = ["vp1_{}".format(i) for i in range(1, 133)]
+    actions += ["vp2_{}".format(i) for i in range(1, 119)]
+    actions += ["vp3_{}".format(i) for i in range(1, 96)]
+    actions += ["vp4_{}".format(i) for i in range(1, 155)]
+    actions += ["vp5_{}".format(i) for i in range(1, 154)]
+    actions += ["vp6_{}".format(i) for i in range(1, 136)]
+    actions += ["vp7_{}".format(i) for i in range(1, 99)]
+    actions += ["vp8_{}".format(i) for i in range(1, 156)]
+    actions += ["vp9_{}".format(i) for i in range(1, 22)]
+    actions += ["vp10_{}".format(i) for i in range(1, 154)]
+    actions += ["vp11_{}".format(i) for i in range(1, 126)]
+    actions += ["vp12_{}".format(i) for i in range(1, )]
+    """
     
     if action == "All" or action == "all" or action == '*' or action is None:
         return actions

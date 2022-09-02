@@ -12,8 +12,8 @@ class opts():
         self.parser.add_argument('--layers', default=3, type=int)
         self.parser.add_argument('--channel', default=256, type=int)
         self.parser.add_argument('--d_hid', default=512, type=int)
-        self.parser.add_argument('--dataset', type=str, default='dad')
-        self.parser.add_argument('-k', '--keypoints', default='gt', type=str) #cpn_ft_h36m_dbb
+        self.parser.add_argument('--dataset', type=str, default='inter_70000_dad_wholebody')
+        self.parser.add_argument('-k', '--keypoints', default='gt_train', type=str) #cpn_ft_h36m_dbb
         self.parser.add_argument('--data_augmentation', type=bool, default=True)
         self.parser.add_argument('--reverse_augmentation', type=bool, default=False)
         self.parser.add_argument('--test_augmentation', type=bool, default=True)
@@ -41,8 +41,8 @@ class opts():
         self.parser.add_argument('--refine_reload', type=int, default=0)
         self.parser.add_argument('-c','--checkpoint', type=str, default='model')
         self.parser.add_argument('--previous_dir', type=str, default='')
-        self.parser.add_argument('--n_joints', type=int, default=17)
-        self.parser.add_argument('--out_joints', type=int, default=17)
+        self.parser.add_argument('--n_joints', type=int, default=85)
+        self.parser.add_argument('--out_joints', type=int, default=85)
         self.parser.add_argument('--out_all', type=int, default=1)
         self.parser.add_argument('--in_channels', type=int, default=2)
         self.parser.add_argument('--out_channels', type=int, default=3)
@@ -86,8 +86,10 @@ class opts():
             print('no stride_num')
             exit()
 
-        self.opt.subjects_train = 'vp1,vp2,vp3,vp4,vp5,vp6,vp7,vp8,vp9,vp10'
-        self.opt.subjects_test = 'vp11,vp12'
+        self.opt.subjects_train = 'resized_vp1,resized_vp2,resized_vp3,resized_vp4,resized_vp5,resized_vp6,resized_vp7,resized_vp8,resized_vp9,resized_vp10'
+        self.opt.subjects_test = 'resized_vp1,resized_vp2,resized_vp3,resized_vp4,resized_vp5,resized_vp6,resized_vp7,resized_vp8,resized_vp9,resized_vp10,resized_vp11,resized_vp12'
+        # self.opt.subjects_train = 'vp1,vp2,vp3,vp4,vp5,vp6,vp7,vp8,vp9,vp10'
+        # self.opt.subjects_test = 'vp11,vp12'
         # self.opt.subjects_test = 'S11'
 
         #if self.opt.train:
@@ -95,11 +97,11 @@ class opts():
 
         ckp_suffix = ''
         if self.opt.refine:
-            ckp_suffix='_refine'
+            ckp_suffix='_wholebody_refine'
         elif self.opt.MAE:
-            ckp_suffix = '_pretrain'
+            ckp_suffix = '_wholebody_pretrain'
         else:
-            ckp_suffix = '_STMO'
+            ckp_suffix = '_wholebody_STMO'
         self.opt.checkpoint = 'checkpoint/'+self.opt.checkpoint + '_%d'%(self.opt.pad*2+1) + \
             '%s'%ckp_suffix
 
