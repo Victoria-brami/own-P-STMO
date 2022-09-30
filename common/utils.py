@@ -10,20 +10,81 @@ def deterministic_random(min_value, max_value, data):
     return int(raw_value / (2 ** 32 - 1) * (max_value - min_value)) + min_value
 
 
-def mpjpe_cal(predicted, target):
+def mpjpe_cal_bis(predicted, target):
     assert predicted.shape == target.shape
     return torch.mean(torch.norm(predicted - target, dim=len(target.shape) - 1))
 
+################# ADDED LOSS FUNCTION ############################
+def mpjpe_cal(predicted, target, is_MAE=False):
+    if target.shape[-1] == 3 and is_MAE:
+        new_target = target[..., :2]
+    else:
+        new_target = target.clone()
+    assert predicted.shape == new_target.shape
+    if torch.is_tensor(new_target):
+        visible = new_target.clone() 
+    else:
+        new_target = torch.from_numpy(new_target)
+        visible = new_target.clone() 
+        predicted = torch.from_numpy(predicted)
+    visible[visible != 0] = 1
+    return torch.mean(torch.norm(predicted*visible - new_target, dim=len(target.shape) - 1))
+
 
 def test_calculation(predicted, target, action, error_sum, data_type, subject, MAE=False):
-    error_sum = mpjpe_by_action_p1(predicted, target, action, error_sum)
+    error_sum = mpjpe_by_action_p1(predicted, target, action, error_sum, is_MAE=MAE)
+    error_sum = mpjpe_by_action_occluded_mpjpe(predicted, target, action, error_sum, is_MAE=MAE)
     if not MAE:
-        error_sum = mpjpe_by_action_p2(predicted, target, action, error_sum)
+        error_sum = mpjpe_by_action_p2(predicted, target, action, error_sum, is_MAE=MAE)
 
     return error_sum
 
+def mpjpe_by_action_occluded_mpjpe(predicted, new_target, action, action_error_sum, is_MAE=False):
 
-def mpjpe_by_action_p1(predicted, target, action, action_error_sum):
+    if new_target.shape[-1] == 3 and is_MAE:
+        target = new_target[..., :2]
+    else:
+        target = new_target.clone()
+    assert predicted.shape == target.shape
+    batch_num = predicted.size(0)
+    frame_num = predicted.size(1)
+    
+    if torch.is_tensor(target):
+        visible = target.clone() 
+    else:
+        target = torch.from_numpy(target)
+        visible = target.clone() 
+        predicted = torch.from_numpy(predicted)
+    visible[visible != 0] = 1
+    
+    dist = torch.mean(torch.norm(predicted*visible - target, dim=len(target.shape) - 1), dim=len(target.shape) - 2)
+
+    if len(set(list(action))) == 1:
+        end_index = action[0].find(' ')
+        if end_index != -1:
+            action_name = action[0][:end_index]
+        else:
+            action_name = action[0]
+
+        action_error_sum[action_name]['mpjpe'].update(torch.mean(dist).item()*batch_num*frame_num, batch_num*frame_num)
+    else:
+        for i in range(batch_num):
+            end_index = action[i].find(' ')
+            if end_index != -1:
+                action_name = action[i][:end_index]
+            else:
+                action_name = action[i]
+
+            action_error_sum[action_name]['mpjpe'].update(torch.mean(dist[i]).item()*frame_num, frame_num)
+            
+    return action_error_sum
+
+
+def mpjpe_by_action_p1(predicted, new_target, action, action_error_sum, is_MAE=False):
+    if new_target.shape[-1] == 3 and is_MAE:
+        target = new_target[..., :2]
+    else:
+        target = new_target.clone()
     assert predicted.shape == target.shape
     batch_num = predicted.size(0)
     frame_num = predicted.size(1)
@@ -50,12 +111,16 @@ def mpjpe_by_action_p1(predicted, target, action, action_error_sum):
     return action_error_sum
 
 
-def mpjpe_by_action_p2(predicted, target, action, action_error_sum):
+def mpjpe_by_action_p2(predicted, new_target, action, action_error_sum, is_MAE=False):
+    if new_target.shape[-1] == 3 and is_MAE:
+        target = new_target[..., :2]
+    else:
+        target = new_target.clone()
     assert predicted.shape == target.shape
     num = predicted.size(0)
     pred = predicted.detach().cpu().numpy().reshape(-1, predicted.shape[-2], predicted.shape[-1])
     gt = target.detach().cpu().numpy().reshape(-1, target.shape[-2], target.shape[-1])
-    dist = p_mpjpe(pred, gt)
+    dist = p_mpjpe(pred, gt, is_MAE)
     if len(set(list(action))) == 1:
         end_index = action[0].find(' ')
         if end_index != -1:
@@ -75,7 +140,11 @@ def mpjpe_by_action_p2(predicted, target, action, action_error_sum):
     return action_error_sum
 
 
-def p_mpjpe(predicted, target):
+def p_mpjpe(predicted, new_target, is_MAE=False):
+    if new_target.shape[-1] == 3 and is_MAE:
+        target = new_target[..., :2]
+    else:
+        target = new_target
     assert predicted.shape == target.shape
 
     muX = np.mean(target, axis=1, keepdims=True)
@@ -110,11 +179,15 @@ def p_mpjpe(predicted, target):
     return np.mean(np.linalg.norm(predicted_aligned - target, axis=len(target.shape) - 1), axis=len(target.shape) - 2)
 
 
-def n_mpjpe(predicted, target):
+def n_mpjpe(predicted, new_target):
     """
     Normalized MPJPE (scale only), adapted from:
     https://github.com/hrhodin/UnsupervisedGeometryAwareRepresentationLearning/blob/master/losses/poses.py
     """
+    if new_target.shape[-1] == 3:
+        target = new_target[..., :2]
+    else:
+        target = new_target.clone()
     assert predicted.shape == target.shape
     
     norm_predicted = torch.mean(torch.sum(predicted**2, dim=3, keepdim=True), dim=2, keepdim=True)
@@ -154,7 +227,7 @@ def define_actions( action ):
                 "inner_mirror/vp11/run2_2018-05-24-14-35-56.ids_1", "inner_mirror/vp11/run1_2018-05-24-13-44-01.ids_1",
                 "inner_mirror/vp12/run1_2018-05-24-15-44-28.ids_1", "inner_mirror/vp12/run2_2018-05-24-16-21-35.ids_1"
                 ]
-    """
+    
     actions = ["vp1_{}".format(i) for i in range(1, 133)]
     actions += ["vp2_{}".format(i) for i in range(1, 119)]
     actions += ["vp3_{}".format(i) for i in range(1, 96)]
@@ -166,8 +239,8 @@ def define_actions( action ):
     actions += ["vp9_{}".format(i) for i in range(1, 22)]
     actions += ["vp10_{}".format(i) for i in range(1, 154)]
     actions += ["vp11_{}".format(i) for i in range(1, 126)]
-    actions += ["vp12_{}".format(i) for i in range(1, )]
-    """
+    actions += ["vp12_{}".format(i) for i in range(1, 77)]
+    
     
     if action == "All" or action == "all" or action == '*' or action is None:
         return actions
@@ -191,7 +264,7 @@ def define_actions( action ):
 
 def define_error_list(actions):
     error_sum = {}
-    error_sum.update({actions[i]: {'p1':AccumLoss(), 'p2':AccumLoss(), 'p3':AccumLoss(), 've':AccumLoss()} for i in range(len(actions))})
+    error_sum.update({actions[i]: {'p1':AccumLoss(), 'p2':AccumLoss(), 'p3':AccumLoss(), 've':AccumLoss(), 'mpjpe':AccumLoss()} for i in range(len(actions))})
     return error_sum
 
 
@@ -225,17 +298,17 @@ def get_varialbe(split, target):
 
 
 def print_error(data_type, action_error_sum, is_train):
-    mean_error_p1, mean_error_p2, mean_error_p3, mean_error_ev = print_error_action(action_error_sum, is_train)
+    mean_error_p1, mean_error_p2, mean_error_mpjpe, mean_error_ev = print_error_action(action_error_sum, is_train)
 
-    return mean_error_p1, mean_error_p2
+    return mean_error_p1, mean_error_p2, mean_error_mpjpe
 
 
 def print_error_action(action_error_sum, is_train):
-    mean_error_each = {'p1': 0.0, 'p2': 0.0, 'p3': 0.0, 've': 0.0}
-    mean_error_all = {'p1': AccumLoss(), 'p2': AccumLoss(), 'p3': AccumLoss(), 've': AccumLoss()}
+    mean_error_each = {'p1': 0.0, 'p2': 0.0, 'p3': 0.0, 've': 0.0, 'mpjpe': 0}
+    mean_error_all = {'p1': AccumLoss(), 'p2': AccumLoss(), 'p3': AccumLoss(), 've': AccumLoss(), 'mpjpe': AccumLoss()}
 
     if is_train == 0:
-        print("{0:=^12} {1:=^10} {2:=^8}".format("Action", "p#1 mm", "p#2 mm", "p#3 mm", "velocity mm/fr"))
+        print("{0:=^12} {1:=^10} {2:=^8} {3:=^8}".format("Action", "p#1 mm", "p#2 mm", "MPJPE mm", "velocity mm/fr"))
 
     for action, value in action_error_sum.items():
         if is_train == 0:
@@ -253,14 +326,18 @@ def print_error_action(action_error_sum, is_train):
         mean_error_each['ve'] = action_error_sum[action]['ve'].avg * 1000.0
         mean_error_all['ve'].update(mean_error_each['ve'], 1)
 
+        mean_error_each['mpjpe'] = action_error_sum[action]['mpjpe'].avg * 1000.0
+        mean_error_all['mpjpe'].update(mean_error_each['mpjpe'], 1)
+
         if is_train == 0:
-            print("{0:>6.2f} {1:>10.2f}".format(mean_error_each['p1'], mean_error_each['p2']))
+            print("{0:>6.2f} {1:>10.2f} {2:>10.2f}".format(mean_error_each['p1'], mean_error_each['p2'], mean_error_each['mpjpe']))
 
     if is_train == 0:
-        print("{0:<12} {1:>6.2f} {2:>10.2f}".format("Average", mean_error_all['p1'].avg, \
-            mean_error_all['p2'].avg))
+        print()
+        print("{0:<12} {1:>6.2f} {2:>10.2f} {3:>10.2f}".format("Average", mean_error_all['p1'].avg,\
+            mean_error_all['p2'].avg, mean_error_all['mpjpe'].avg))
     
-    return mean_error_all['p1'].avg, mean_error_all['p2'].avg, mean_error_all['p3'].avg, mean_error_all['ve'].avg
+    return mean_error_all['p1'].avg, mean_error_all['p2'].avg, mean_error_all['mpjpe'].avg, mean_error_all['ve'].avg
 
 
 

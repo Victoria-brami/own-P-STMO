@@ -25,6 +25,15 @@ dad_wholebody_metadata = {
     ]
 }
 
+dad_metadata = {
+    'layout_name': 'dad_wholebody',
+    'num_joints': 85,
+    'keypoints_symmetry': [
+        [1, 3, 5, 7, 9, 11, 13, 15, 32-6, 33-6, 34-6, 35-6, 36-6, 37-6, 38-6, 39-6, 45-6, 46-6, 47-6, 48-6, 49-6, 65-6, 66-6, 67-6, 68-6, 69-6, 70-6], 
+        [2, 4, 6, 8, 10, 12, 14, 16, 23-6, 24-6, 25-6, 26-6, 27-6, 28-6, 29-6, 30-6, 40-6, 41-6, 42-6, 43-6, 44-6, 59-6, 60-6, 61-6, 62-6, 63-6, 64-6]
+    ]
+}
+
 
 
 class Fusion(data.Dataset):
@@ -43,8 +52,10 @@ class Fusion(data.Dataset):
         self.crop_uv = opt.crop_uv
         self.test_aug = opt.test_augmentation
         self.pad = opt.pad
+        self.in_channels = opt.in_channels
         self.seq_start = opt.seq_start
         self.seq_length = opt.seq_length
+        self.num_joints = dad_metadata["num_joints"]
         self.MAE=MAE
         if self.train:
             self.keypoints = self.prepare_data(dataset, self.train_list)
@@ -84,7 +95,7 @@ class Fusion(data.Dataset):
                         positions_3d.append(pos_3d)
                     anim['positions_3d'] = positions_3d
 
-        self.data_type = 'dad'
+    
         self.keypoints_name = 'gt_train'
         keypoints = np.load(self.root_path + 'data_2d_' + self.data_type + '_' + self.keypoints_name + '.npz',allow_pickle=True)
         keypoints_metadata = dad_metadata
@@ -112,10 +123,15 @@ class Fusion(data.Dataset):
             for i, action in enumerate(keypoints[subject]):
                # for cam_idx, kps in enumerate(keypoints[subject][action]):
                 kps = keypoints[subject][action].reshape((len(keypoints[subject][action]), dad_metadata['num_joints'], 3))
-                cam = dataset.cameras()[subject][i]
+                j = i
+                j = 0
+                cam = dataset.cameras()[subject][j]
                 if self.crop_uv == 0:
                     kps[..., :2] = normalize_screen_coordinates(kps[..., :2], w=cam['res_w'], h=cam['res_h'])
-                keypoints[subject][action] = kps[..., :2]
+                if self.in_channels == 2:
+                    keypoints[subject][action] = kps[..., :2]
+                else:
+                    keypoints[subject][action] = kps
         
         return keypoints
 
@@ -153,7 +169,7 @@ class Fusion(data.Dataset):
                     assert len(poses_3d) == len(poses_2d), 'Camera count mismatch'
                     for i in range(len(poses_3d)): 
                         pose_3d = poses_3d[i] #[self.seq_start: self.seq_start + self.seq_length]
-                        pose_3d = np.reshape(pose_3d, (len(pose_3d), 17, 3))
+                        pose_3d = np.reshape(pose_3d, (len(pose_3d), self.num_joints, 3))
 
                         out_poses_3d[(subject, action, i)] = pose_3d
 

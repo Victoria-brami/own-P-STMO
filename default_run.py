@@ -1,22 +1,18 @@
 import os
-os.system("pip install torch-summary")
-from torchsummary import summary
 import glob
 import torch
 import random
 import logging
 import numpy as np
-import math
 from tqdm import tqdm
 import torch.nn as nn
 import torch.utils.data
 import torch.optim as optim
-from common.opt_wholebody import opts
+from common.opt import opts
 from common.utils import *
 from common.camera import get_uvd2xyz
-from common.load_data_hm36_tds import Fusion
+from common.load_data_hm36_tds_default import Fusion
 from common.h36m_dataset import Human36mDataset
-from common.dad_dataset import  DadHuman36MWholebodyDataset
 from model.block.refine import refine
 from model.stmo import Model
 from model.stmo_pretrain import Model_MAE
@@ -25,7 +21,6 @@ from thop import clever_format
 from thop.profile import profile
 
 opt = opts().parse()
-print(vars(opt))
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu
 
 def train(opt, actions, train_loader, model, optimizer, epoch):
@@ -55,16 +50,10 @@ def step(split, opt, actions, dataLoader, model, optimizer=None, epoch=None):
     action_error_sum = define_error_list(actions)
     action_error_sum_post_out = define_error_list(actions)
     action_error_sum_MAE = define_error_list(actions)
-    
 
-    joints_left=[1, 3, 5, 7, 9, 11, 13, 15, 32-6, 33-6, 34-6, 
-                                 35-6, 36-6, 37-6, 38-6, 39-6, 45-6, 46-6, 47-6, 
-                                 48-6, 49-6, 65-6, 66-6, 67-6, 68-6, 69-6, 70-6]
-    joints_right=[2, 4, 6, 8, 10, 12, 14, 16, 23-6, 24-6, 25-6, 
-                                  26-6, 27-6, 28-6, 29-6, 30-6, 40-6, 41-6, 42-6, 
-                                  43-6, 44-6, 59-6, 60-6, 61-6, 62-6, 63-6, 64-6]
-   
-    
+    joints_left = [4, 5, 6, 11, 12, 13]  
+    joints_right = [1, 2, 3, 14, 15, 16]
+
     for i, data in enumerate(tqdm(dataLoader, 0)):
 
         if opt.MAE:
@@ -85,9 +74,9 @@ def step(split, opt, actions, dataLoader, model, optimizer=None, epoch=None):
 
             mask = torch.from_numpy(mask).to(torch.bool).cuda()
 
-            spatial_mask = np.zeros((f, opt.n_joints), dtype=bool)
+            spatial_mask = np.zeros((f, 17), dtype=bool)
             for k in range(f):
-                ran = random.sample(range(0, 84), opt.spatial_mask_num)
+                ran = random.sample(range(0, 16), opt.spatial_mask_num)
                 spatial_mask[k, ran] = True
 
 
@@ -98,10 +87,9 @@ def step(split, opt, actions, dataLoader, model, optimizer=None, epoch=None):
                 input_2D = input_2D.view(N, -1, opt.n_joints, opt.in_channels, 1).permute(0, 3, 1, 2, 4).type(
                     torch.cuda.FloatTensor)
                 output_2D = model_MAE(input_2D, mask, spatial_mask)
-                # print("Output shape: ", output_2D.shape)
 
 
-            input_2D = input_2D.permute(0, 2, 3, 1, 4).view(N, -1, opt.n_joints, opt.in_channels)
+            input_2D = input_2D.permute(0, 2, 3, 1, 4).view(N, -1, opt.n_joints, 2)
             output_2D = output_2D.permute(0, 2, 3, 1, 4).view(N, -1, opt.n_joints, 2)
 
 
@@ -110,6 +98,7 @@ def step(split, opt, actions, dataLoader, model, optimizer=None, epoch=None):
 
         else:
             batch_cam, gt_3D, input_2D, action, subject, scale, bb_box, cam_ind = data
+            print("GT 3D Shape and input: ", gt_3D.shape, input_2D.shape)
             [input_2D, gt_3D, batch_cam, scale, bb_box] = get_varialbe(split,
                                                                        [input_2D, gt_3D, batch_cam, scale, bb_box])
 
@@ -145,15 +134,11 @@ def step(split, opt, actions, dataLoader, model, optimizer=None, epoch=None):
             elif split == 'test':
                 pred_out = output_3D_single
 
-            input_2D = input_2D.permute(0, 2, 3, 1, 4).view(N, -1, opt.n_joints , opt.in_channels)
+            input_2D = input_2D.permute(0, 2, 3, 1, 4).view(N, -1, opt.n_joints ,2)
 
             if opt.refine:
-                if opt.in_channels == 3:
-                    pred_uv = input_2D[..., :2]
-                else:
-                    pred_uv = input_2D    
+                pred_uv = input_2D
                 uvd = torch.cat((pred_uv[:, opt.pad, :, :].unsqueeze(1), output_3D_single[:, :, :, 2].unsqueeze(-1)), -1)
-                print("UVD Shape", uvd.shape)
                 xyz = get_uvd2xyz(uvd, gt_3D_single, batch_cam)
                 xyz[:, :, 0, :] = 0
                 post_out = model_refine(output_3D_single, xyz)
@@ -198,14 +183,13 @@ def step(split, opt, actions, dataLoader, model, optimizer=None, epoch=None):
             return loss_all['loss'].avg, error_sum.avg*1000
     elif split == 'test':
         if opt.MAE:
-            p1, p2, mpjpe = print_error(opt.dataset, action_error_sum_MAE, opt.train)
+            p1, p2 = print_error(opt.dataset, action_error_sum_MAE, opt.train)
             return p1, p2, loss_all['loss'].avg
         if opt.refine:
-            p1, p2, mpjpe = print_error(opt.dataset, action_error_sum_post_out, opt.train)
-            return p1, p2, mpjpe
+            p1, p2 = print_error(opt.dataset, action_error_sum_post_out, opt.train)
         else:
-            p1, p2, mpjpe = print_error(opt.dataset, action_error_sum, opt.train)
-            return p1, p2, mpjpe
+            p1, p2 = print_error(opt.dataset, action_error_sum, opt.train)
+
         return p1, p2
 
 def input_augmentation_MAE(input_2D, model_trans, joints_left, joints_right, mask, spatial_mask=None):
@@ -265,20 +249,12 @@ if __name__ == '__main__':
     if opt.train == 1:
         logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y/%m/%d %H:%M:%S', \
                             filename=os.path.join(opt.checkpoint, 'train.log'), level=logging.INFO)
-    opt.root_path = '/datasets_local/DriveAndAct/' 
+            
     root_path = opt.root_path
-    if opt.train:
-        dataset_path = root_path + 'data_3d_' + opt.dataset + '_train' + '.npz'
-    else:
-        dataset_path = root_path + 'data_3d_' + opt.dataset + '_train' + '.npz'
+    # root_path = '/root/no_backup'
+    dataset_path = root_path + 'data_3d_' + opt.dataset + '.npz'
 
-    # dataset = Human36mDataset(dataset_path, opt)
-    dataset =  DadHuman36MWholebodyDataset(dataset_path)
-    """
-    for subject in dataset.subjects():
-        for action in dataset[subject].keys():
-            print("Subject and action: ", subject, action)
-    """
+    dataset = Human36mDataset(dataset_path, opt)
     actions = define_actions(opt.actions)
 
     if opt.train:
@@ -306,10 +282,6 @@ if __name__ == '__main__':
     model['trans'] = nn.DataParallel(Model(opt)).cuda()
     model['refine'] = nn.DataParallel(refine(opt)).cuda()
     model['MAE'] = nn.DataParallel(Model_MAE(opt)).cuda()
-
-    input_data_1 = torch.rand((4, 2, 27, 85, 1)).long()
-    input_data_2 = torch.ones((27,)).long()
-    input_data_3 = torch.ones((27, 85)).long()
 
     model_params = 0
     for parameter in model['trans'].parameters():
@@ -365,7 +337,7 @@ if __name__ == '__main__':
     for i_model in model:
         all_param += list(model[i_model].parameters())
     optimizer_all = optim.Adam(all_param, lr=opt.lr, amsgrad=True)
-    mpjpe = math.inf
+
     for epoch in range(1, opt.nepoch):
         if opt.train == 1:
             if not opt.MAE:
@@ -374,18 +346,11 @@ if __name__ == '__main__':
                 loss = train(opt, actions, train_dataloader, model, optimizer_all, epoch)
         if opt.test == 1:
             if not opt.MAE:
-                p1, p2, mpjpe = val(opt, actions, test_dataloader, model)
+                p1, p2 = val(opt, actions, test_dataloader, model)
             else:
                 p1, p2, loss_test = val(opt, actions, test_dataloader, model)
             data_threshold = p1
-            data_threshold_2 = mpjpe
-            if opt.train and data_threshold_2 < opt.previous_best_threshold_2:
-                opt.previous_name = save_model(opt.previous_name, opt.checkpoint, epoch, data_threshold_2, model['trans'], 'no_refine_mpjpe')
 
-                if opt.refine:
-                    opt.previous_refine_name = save_model(opt.previous_refine_name, opt.checkpoint, epoch,
-                                                              data_threshold_2, model['refine'], 'refine_mpjpe')
-                opt.previous_best_threshold_2 = data_threshold_2
             if opt.train and data_threshold < opt.previous_best_threshold:
                 if opt.MAE:
                     opt.previous_name = save_model(opt.previous_name, opt.checkpoint, epoch, data_threshold,
@@ -419,11 +384,3 @@ if __name__ == '__main__':
             for param_group in optimizer_all.param_groups:
                 param_group['lr'] *= opt.lr_decay
                 lr *= opt.lr_decay
-
-
-
-
-
-
-
-

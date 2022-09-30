@@ -12,7 +12,7 @@ class opts():
         self.parser.add_argument('--layers', default=3, type=int)
         self.parser.add_argument('--channel', default=256, type=int)
         self.parser.add_argument('--d_hid', default=512, type=int)
-        self.parser.add_argument('--dataset', type=str, default='inter_70000_dad_wholebody')
+        self.parser.add_argument('--dataset', type=str, default='corrected_dad_wholebody') #inter_70000_dad_wholebody
         self.parser.add_argument('-k', '--keypoints', default='gt_train', type=str) #cpn_ft_h36m_dbb
         self.parser.add_argument('--data_augmentation', type=bool, default=True)
         self.parser.add_argument('--reverse_augmentation', type=bool, default=False)
@@ -35,7 +35,7 @@ class opts():
         self.parser.add_argument('--workers', type=int, default=8)
         self.parser.add_argument('-lrd', '--lr_decay', default=0.95, type=float)
         self.parser.add_argument('-f','--frames', type=int, default=243)
-        self.parser.add_argument('--pad', type=int, default=121)
+        self.parser.add_argument('--pad', type=int, default=1) #121 for 243
         self.parser.add_argument('--refine', action='store_true')
         self.parser.add_argument('--reload', type=int, default=0)
         self.parser.add_argument('--refine_reload', type=int, default=0)
@@ -44,19 +44,19 @@ class opts():
         self.parser.add_argument('--n_joints', type=int, default=85)
         self.parser.add_argument('--out_joints', type=int, default=85)
         self.parser.add_argument('--out_all', type=int, default=1)
-        self.parser.add_argument('--in_channels', type=int, default=2)
+        self.parser.add_argument('--in_channels', type=int, default=3)
         self.parser.add_argument('--out_channels', type=int, default=3)
-        self.parser.add_argument('-previous_best_threshold', type=float, default= math.inf)
-        self.parser.add_argument('-previous_best_threshold_2', type=float, default= math.inf)
+        self.parser.add_argument('--previous_best_threshold', type=float, default= math.inf)
+        self.parser.add_argument('--previous_best_threshold_2', type=float, default= math.inf)
         self.parser.add_argument('-previous_name', type=str, default='')
         self.parser.add_argument('--previous_refine_name', type=str, default='')
         self.parser.add_argument('--manualSeed', type=int, default=1)
-        self.parser.add_argument('--seq_start', type=int, default=2000)
-        self.parser.add_argument('--seq_length', type=int, default=10000)
+        self.parser.add_argument('--seq_start', type=int, default=100)
+        self.parser.add_argument('--seq_length', type=int, default=1000)
 
         self.parser.add_argument('--MAE', action='store_true')
-        self.parser.add_argument('-tmr','--temporal_mask_rate', type=float, default=0)
-        self.parser.add_argument('-smn', '--spatial_mask_num', type=int, default=0)
+        self.parser.add_argument('-tmr','--temporal_mask_rate', type=float, default=0.8)
+        self.parser.add_argument('-smn', '--spatial_mask_num', type=int, default=7)
         self.parser.add_argument('-tds', '--t_downsample', type=int, default=1)
 
         self.parser.add_argument('--MAE_reload', type=int, default=0)
@@ -87,7 +87,7 @@ class opts():
             exit()
 
         self.opt.subjects_train = 'resized_vp1,resized_vp2,resized_vp3,resized_vp4,resized_vp5,resized_vp6,resized_vp7,resized_vp8,resized_vp9,resized_vp10'
-        self.opt.subjects_test = 'resized_vp1,resized_vp2,resized_vp3,resized_vp4,resized_vp5,resized_vp6,resized_vp7,resized_vp8,resized_vp9,resized_vp10,resized_vp11,resized_vp12'
+        self.opt.subjects_test = 'resized_vp1,resized_vp2,resized_vp3,resized_vp4,resized_vp5,resized_vp6,resized_vp8,resized_vp9,resized_vp10,resized_vp11,resized_vp12'
         # self.opt.subjects_train = 'vp1,vp2,vp3,vp4,vp5,vp6,vp7,vp8,vp9,vp10'
         # self.opt.subjects_test = 'vp11,vp12'
         # self.opt.subjects_test = 'S11'

@@ -404,7 +404,7 @@ class DadHuman36MDataset(H36mTypeDataset):
             for i, (video_name, positions) in enumerate(records.items()):
                 self._data[subject][video_name] = {
                     'positions': [positions],
-                    'cameras': [self._cameras[subject][i]],
+                    'cameras': [self._cameras[subject][j]],
                 }
                 
             
@@ -438,7 +438,7 @@ class DadHuman36MWholebodyDataset(H36mTypeDataset):
     def __init__(self, datapath, remove_static_joints=False) -> None:
         super().__init__(fps=30, skeleton=FACE_AND_BODY_SKELETON)
         self._cameras = copy.deepcopy(EXTRINSIC_PARAMS)
-        print("Nulber of joints: ", self.skeleton().num_joints())
+        print("Number of joints: ", self.skeleton().num_joints())
 
         for cameras in self._cameras.values():
             for i, cam in enumerate(cameras):
@@ -467,9 +467,11 @@ class DadHuman36MWholebodyDataset(H36mTypeDataset):
         for subject, records in data.items():
             self._data[subject] = {}
             for i, (video_name, positions) in enumerate(records.items()):
+                j = i
+                j = 0
                 self._data[subject][video_name] = {
                     'positions': [positions],
-                    'cameras': [self._cameras[subject][i]],
+                    'cameras': [self._cameras[subject][j]],
                 }
 
     def supports_semi_supervised(self):

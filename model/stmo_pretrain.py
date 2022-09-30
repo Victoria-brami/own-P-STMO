@@ -3,6 +3,8 @@ import torch.nn as nn
 from model.block.vanilla_transformer_encoder_pretrain import Transformer, Transformer_dec
 from model.block.strided_transformer_encoder import Transformer as Transformer_reduce
 import numpy as np
+from torchsummary import summary
+from common.opt_wholebody import opts
 
 class LayerNorm(nn.Module):
     def __init__(self, features, eps=1e-6):
@@ -93,8 +95,10 @@ class Model_MAE(nn.Module):
 
         self.length = length
         dec_dim_shrink = 2
+        self.in_channels = args.in_channels
+        print("In channels: ", self.in_channels)
 
-        self.encoder = FCBlock(2*self.num_joints_in, channel, 2*channel, 1)
+        self.encoder = FCBlock(args.in_channels*self.num_joints_in, channel, 2*channel, 1)
 
         self.Transformer = Transformer(layers, channel, d_hid, length=length)
         self.Transformer_dec = Transformer_dec(layers-1, channel//dec_dim_shrink, d_hid//dec_dim_shrink, length=length)
@@ -115,29 +119,36 @@ class Model_MAE(nn.Module):
         self.dec_pos_embedding = nn.Parameter(torch.randn(1, length, channel//dec_dim_shrink))
         self.mask_token = nn.Parameter(torch.randn(1, 1, channel//dec_dim_shrink))
 
-        self.spatial_mask_token = nn.Parameter(torch.randn(1, 1, 2))
+        self.spatial_mask_token = nn.Parameter(torch.randn(1, 1, self.in_channels))
 
     def forward(self, x_in, mask, spatial_mask):
+        #print("MAE Input Shape: ", x_in.shape, mask.shape, spatial_mask.shape)
         x_in = x_in[:, :, :, :, 0].permute(0, 2, 3, 1).contiguous()
         b,f,_,_ = x_in.shape
 
         # spatial mask out
         x = x_in.clone()
-
-        x[:,spatial_mask] = self.spatial_mask_token.expand(b,self.spatial_mask_num*f,2)
+        #print("x Shape: ", x.shape)
+        # print(b,self.spatial_mask_num*f,self.in_channels)
+        x[:,spatial_mask] = self.spatial_mask_token.expand(b,self.spatial_mask_num*f,self.in_channels)
 
 
         x = x.view(b, f, -1)
+        #print("X shape 1: {}".format(x.shape))
 
         x = x.permute(0, 2, 1).contiguous()
-
+        #print("X shape 2: {}".format(x.shape))
         x = self.encoder(x)
-
+        #print("X shape 3: {}".format(x.shape))
         x = x.permute(0, 2, 1).contiguous()
+        #print("X shape 4: {}".format(x.shape))
         feas = self.Transformer(x, mask_MAE=mask)
+        #print("feas shape 1: {}".format(feas.shape))
 
         feas = self.encoder_LN(feas)
+        #print("feas shape 2: {}".format(feas.shape))
         feas = self.encoder_to_decoder(feas)
+        #print("feas shape 3: {}".format(feas.shape))
 
         B, N, C = feas.shape
 
@@ -147,16 +158,27 @@ class Model_MAE(nn.Module):
         pos_emd_vis = expand_pos_embed[:, ~mask].reshape(B, -1, C)
         pos_emd_mask = expand_pos_embed[:, mask].reshape(B, -1, C)
         x_full = torch.cat([feas + pos_emd_vis, self.mask_token + pos_emd_mask], dim=1)
-
+        #print("X full shape 1: {}".format(x_full.shape))
         x_out = self.Transformer_dec(x_full, pos_emd_mask.shape[1])
-
+        #print("X out shape 1: {}".format(x_out.shape))
         x_out = x_out.permute(0, 2, 1).contiguous()
         x_out = self.fcn_dec(x_out)
-
+        #print("X out shape 2: {}".format(x_out.shape))
         x_out = x_out.view(b, self.num_joints_out, 2, -1)
         x_out = x_out.permute(0, 2, 3, 1).contiguous().unsqueeze(dim=-1)
-        
+        #print("X out shape 3: {}".format(x_out.shape))
         return x_out
+
+
+if __name__ == '__main__':
+    opt = opts().parse()
+    model = Model_MAE(opt)
+    print("\n /////// MAE Model ///////")
+    input_data_1 = torch.rand((4, 2, 27, 85, 1)).long()
+    input_data_2 = torch.ones((27,)).long()
+    input_data_3 = torch.ones((27, 85)).long()
+    #summary(model, input_data_1, input_data_2, input_data_3)
+    print("\n /////// Trans Model ///////")
 
 
 

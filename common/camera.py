@@ -67,9 +67,9 @@ def qinverse(q, inplace=False):
 
 
 def get_uvd2xyz(uvd, gt_3D, cam):
-    N, T, V,_ = uvd.size()
+    N, T, V, I = uvd.size()
 
-    dec_out_all = uvd.view(-1, T, V, 3).clone()  
+    dec_out_all = uvd.view(-1, T, V, I).clone()  
     root = gt_3D[:, :, 0, :].unsqueeze(-2).repeat(1, 1, V, 1).clone()
     enc_in_all = uvd[:, :, :, :2].view(-1, T, V, 2).clone() 
 

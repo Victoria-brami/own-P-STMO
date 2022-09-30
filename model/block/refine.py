@@ -12,6 +12,7 @@ class refine(nn.Module):
         out_seqlen = 1
         fc_in = opt.out_channels*2*out_seqlen*opt.n_joints 
         fc_out = opt.in_channels * opt.n_joints 
+        self.in_channels = opt.in_channels
 
         self.post_refine = nn.Sequential(
             nn.Linear(fc_in, fc_unit),
@@ -26,10 +27,10 @@ class refine(nn.Module):
         x_in = torch.cat((x, x_1), -1) 
         x_in = x_in.view(N, -1) 
 
-        score = self.post_refine(x_in).view(N,T,V,2) 
+        score = self.post_refine(x_in).view(N,T,V,self.in_channels) 
         score_cm = Variable(torch.ones(score.size()), requires_grad=False).cuda() - score
         x_out = x.clone()
-        x_out[:, :, :, :2] = score * x[:, :, :, :2] + score_cm * x_1[:, :, :, :2]
+        x_out[:, :, :, :self.in_channels] = score * x[:, :, :, :self.in_channels] + score_cm * x_1[:, :, :, :self.in_channels]
 
         return x_out
 

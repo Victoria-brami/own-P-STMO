@@ -48,6 +48,7 @@ class Fusion(data.Dataset):
 
     def prepare_data(self, dataset, folder_list):
         for subject in folder_list:
+            print("Dataset keys: ", dataset.keys())
             for action in dataset[subject].keys():
                 anim = dataset[subject][action]
 

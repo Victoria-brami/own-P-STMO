@@ -75,9 +75,10 @@ class Model(nn.Module):
 
         layers, channel, d_hid, length  = args.layers, args.channel, args.d_hid, args.frames
         stride_num = args.stride_num
+        self.in_channels = args.in_channels
         self.num_joints_in, self.num_joints_out = args.n_joints, args.out_joints
 
-        self.encoder = FCBlock(2*self.num_joints_in, channel, 2*channel, 1)
+        self.encoder = FCBlock(self.in_channels*self.num_joints_in, channel, 2*channel, 1)
 
         self.Transformer = Transformer(layers, channel, d_hid, length=length)
         self.Transformer_reduce = Transformer_reduce(len(stride_num), channel, d_hid, \
@@ -94,20 +95,28 @@ class Model(nn.Module):
         )
 
     def forward(self, x):
+        print("Input: {}".format(x.shape))
         x = x[:, :, :, :, 0].permute(0, 2, 3, 1).contiguous() 
         x_shape = x.shape
-
-        x = x.view(x.shape[0], x.shape[1], -1) 
+        # print("Shape 0: {}".format(x.shape))
+        x = x.view(x.shape[0], x.shape[1], -1)
+        # print("Shape 1: {}".format(x.shape)) 
         x = x.permute(0, 2, 1).contiguous() 
+        # print("Shape 2: {}".format(x.shape))
 
         x = self.encoder(x) 
+        # print("Shape 3: {}".format(x.shape))
 
         x = x.permute(0, 2, 1).contiguous()
+        # print("Shape 4: {}".format(x.shape))
         x = self.Transformer(x) 
+        # print("Shape 5: {}".format(x.shape))
 
         x_VTE = x
         x_VTE = x_VTE.permute(0, 2, 1).contiguous()
+        # print("Shape 6: {}".format(x_VTE.shape))
         x_VTE = self.fcn_1(x_VTE) 
+        # print("Shape 7: {}".format(x_VTE.shape))
 
         x_VTE = x_VTE.view(x_shape[0], self.num_joints_out, -1, x_VTE.shape[2])
         x_VTE = x_VTE.permute(0, 2, 3, 1).contiguous().unsqueeze(dim=-1)
